@@ -74,10 +74,10 @@ type Eq a = {
 To use the functions of an interface implicitly, an implementation of the interface must exist in scope, and the interface must be mentioned in a type signature:
 
 ```Haskell
-findIndex: forall a. (Eq a, Fun f, f <= a) => a -> List a .f (Maybe Int, List a)
+findIndex: forall a. (Eq a, Fun f, f <= a) => a -> List a `f` (Maybe Int, List a)
 findIndex x = findStartingAt 0
   where
-    findStartingAt: Int -> List a .f (Maybe Int, List a)
+    findStartingAt: Int -> List a `f` (Maybe Int, List a)
     findStartingAt _ Empty = (Nothing, Empty)
     findStartingAt i (List y ys) =
         if x == y
