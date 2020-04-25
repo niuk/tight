@@ -58,7 +58,7 @@ apply: forall f a b. Fun f => (a `f` b) -> a `f` b
 apply f = lambda x. f x
 ```
 
-The syntax `\`f\`` applies an expression infix.
+The syntax `` `f` `` applies an expression infix.
 
 ### Interfaces
 
