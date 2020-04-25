@@ -50,7 +50,7 @@ Just: forall a. a -> Maybe a
 
 We use arrows with tildes to represent linear functions. (There were no other ASCII symbols that looked good enough.)
 
-```
+```Haskell
 type (->): * -> * -> *
 type (~>): * -> * -> *
 
@@ -64,7 +64,7 @@ The syntax `` `f` `` applies an expression infix.
 
 Interfaces are defined using record types:
 
-```
+```Haskell
 type Eq: * -> *
 type Eq a = {
     (==): forall b. [b] a -> a -> Bool
@@ -73,7 +73,7 @@ type Eq a = {
 
 To use the functions of an interface implicitly, an implementation of the interface must exist in scope, and the interface must be mentioned in a type signature:
 
-```
+```Haskell
 findIndex: forall a. (Eq a, Fun f, f <= a) => a -> List a .f (Maybe Int, List a)
 findIndex x = findStartingAt 0
   where
