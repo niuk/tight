@@ -1,24 +1,22 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-
 module Main where
 
+import Data.Text
+import Data.Text.Encoding as E
+import Data.ByteString as BS
+
 import System.Environment
-import System.IO
 
-import Data.String
-
-import Prelude (error, undefined)
-
-import Parse (parse)
-import TypeCheck (typeCheck)
+import Types
+import Parser (parse)
+import TypeChecker (typeCheck)
 import Generator (generateC)
 
 main :: IO ()
 main = do
   [inputFile, outputFile] <- getArgs
-  source <- readFile inputFile
+  source <- E.decodeUtf8 <$> BS.readFile inputFile
   let target = compile source
-  writeFile outputFile target
+  BS.writeFile outputFile (E.encodeUtf8 target)
 
-compile :: String -> String
+compile :: Text -> Text
 compile = generateC . typeCheck . parse

@@ -8,11 +8,11 @@ We use the single colon (`:`) for both type and kind annotation. `*` is the kind
 
 ### Linearity
 
-Same as Morris, we use constraints to distinguish between linear and unrestricted types. Specifically, unrestrictedness is represented by this constraint:
+Same as Morris, we use constraints to distinguish between linear and unrestricted types:
 
 ```Haskell
-type Unrestricted: * -> *
-type Unrestricted t = {
+type Un: * -> *
+type Un t = {
     duplicate: t -> (t, t),
     drop: t -> (),
 }
@@ -94,6 +94,8 @@ index = findIndex 4 (0 `List` 3 `List` 4 `List` 2)
 `List a` is a linear type, since a list is made up of dynamically allocated nodes that must be deallocated at some point. To preserve the list for subsequent usage, this function reconstructs it node by node at each step in the traversal. The compiler should systematically optimize away such patterns of destruction and reconstruction into simple reads.
 
 ## Compilation
+
+
 
 ## Relevant Links
 * [Lightweight Linear Types in System F◦. K Mazurak, J Zhao, S Zdancewic](https://www.cis.upenn.edu/~stevez/papers/MZZ10.pdf)
