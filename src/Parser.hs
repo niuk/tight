@@ -1,5 +1,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Parser where
@@ -16,13 +17,7 @@ import Control.Monad
 
 import Types
 
-newtype Custom = Disallowed Text
-  deriving (Eq, Show, Ord)
-
-instance ShowErrorComponent Custom where
-    showErrorComponent (Disallowed s) = "\"" ++ unpack s ++ "\" is not allowed here"
-
-type Parser = Parsec Custom Text
+type Parser = Parsec String Text
 
 isOpChar c = not (isSpace c) && not (isAlphaNum c) && (c `notElem`
     [ '"'
@@ -32,17 +27,19 @@ isOpChar c = not (isSpace c) && not (isAlphaNum c) && (c `notElem`
     , '{', '}'
     , '`'
     , '.'
+    , ','
+    , ':'
+    , ';'
     ])
 
 disallowed =
     [ "forall"
     , "exists"
-    , "lambda"
-    , "let"
-    , "in"
+    , "type"
     , "∀"
     , "∃"
-    , "=>"
+    , "Λ"
+    , "λ"
     ]
 
 many1 p = (:) <$> p <*> many p
@@ -65,27 +62,25 @@ parens p = do
     syntax ")"
     return x
 
-kindStar :: Parser Kind
-kindStar = do
-    syntax "*"
-    return KindStar
-
-kindArrow :: Parser Kind
-kindArrow = do
-    kindStar
-    syntax "->"
-    KindArrow <$> kind
-
-kind :: Parser Kind
-kind = trySum
-    [ kindArrow
-    , kindStar
+kindExpr :: Int -> Parser KindExpr
+kindExpr 0 = trySum
+    [ do
+        x <- kindExpr 1
+        syntax "->"
+        KindArrow x <$> kindExpr 0
+    , kindExpr 1
+    ]
+kindExpr 1 = trySum
+    [ do
+        syntax "*"
+        return KindStar
+    , parens (kindExpr 0)
     ]
 
 disallow :: [Text] -> Parser Text -> Parser Text
 disallow l p = do
     x <- p
-    when (x `elem` l) (customFailure (Disallowed x))
+    when (x `elem` l) (fail ("\"" ++ unpack x ++ "\" is not allowed here."))
     return x
 
 suffix :: Parser Text
@@ -100,11 +95,37 @@ constructor = disallow disallowed (lexeme (cons <$> upperChar <*> suffix))
 operator :: Parser Text
 operator = disallow disallowed (lexeme (pack <$> many1 (satisfy isOpChar)))
 
+operatorExpr :: forall a. Parser a -> Parser (Either Text a)
+operatorExpr p = trySum
+    [ do
+        syntax "`"
+        x <- p
+        syntax "`"
+        return (Right x)
+    , Left <$> operator
+    ]
+
 typeExpr :: Int -> Parser TypeExpr
 typeExpr 0 = trySum
     [ do
+        x < typeExpr 1
+        syntax "using"
+
+    ]
+typeExpr 1 = trySum
+    [ do
+        syntax "∀" <|> syntax "forall"
+        vs <- many1 variable
+        syntax ":"
+        ForAll vs <$> typeExpr 0
+    , do
+        syntax "∃" <|> syntax "exists"
+        vs <- many1 variable
+        syntax ":"
+        Exists vs <$> typeExpr 0
+    , do
         x <- typeExpr 1
-        op <- operator
+        op <- either id id <$> operatorExpr variable
         y <- typeExpr 0
         return (TypeCon op [x, y])
     , typeExpr 1
@@ -122,43 +143,51 @@ typeExpr 2 = trySum
     , parens (typeExpr 0)
     ]
 
-typePred :: Parser TypePred
-typePred = trySum
-    [ Pred <$> constructor <*> many1 (typeExpr 1)
-    , do
-        left <- typeExpr 1
-        syntax "<="
-        right <- typeExpr 0
-        return (left :<= right)
-    , do
-        left <- typeExpr 1
-        syntax ">="
-        right <- typeExpr 0
-        return (left :>= right)
-    ]
-
-qualType :: Parser QualType
-qualType = trySum
+pattern :: Int -> Parser Pattern
+pattern 0 = trySum
     [ do
-        pred <- typePred
-        syntax "=>"
-        Qual pred <$> typeExpr 0
-    , TypeExpr <$> typeExpr 0
+        c <- constructor
+        MatchCon c <$> many (pattern 1)
+    , pattern 1
+    ]
+pattern 1 = trySum
+    [ Bind <$> variable
+    , flip MatchCon [] <$> constructor
     ]
 
-typeScheme :: Parser TypeScheme
-typeScheme = trySum
-    [ QualType <$> qualType
-    , do
-        syntax "∀" <|> syntax "forall"
-        v <- variable
-        syntax "."
-        ForAll v <$> typeScheme
+def :: Parser Def
+def = do
+    p <- pattern 0
+    syntax "="
+    Def p <$> expr 0
+
+lambdaBody :: Parser [Either Def Expr]
+lambdaBody = sepBy1 (trySum
+    [ Left <$> def
+    , Right <$> expr 0
+    ]) (syntax ",")
+
+lambdaCase :: Parser ([Pattern], [Either Def Expr])
+lambdaCase = trySum
+    [ do
+        ps <- many1 (pattern 1)
+        syntax ":"
+        (ps,) <$> lambdaBody
+    , ([],) <$> lambdaBody
     ]
 
 expr :: Int -> Parser Expr
 expr 0 = trySum
     [ do
+        syntax "["
+        cs <- sepBy1 lambdaCase (syntax ";")
+        syntax "]"
+        return (Lambda cs)
+    , do
+        syntax "Lambda" <|> syntax "Λ"
+        v <- variable
+        TypeLambda v <$> lambdaBody
+    , do
         x <- expr 1
         op <- operator
         y <- expr 0
@@ -173,5 +202,5 @@ expr 2 = trySum
     , parens (expr 0)
     ]
 
-parse :: forall e. Text -> Either (ParseErrorBundle Text e) Module
-parse = runParser undefined "module"
+parse :: Text -> Either (ParseErrorBundle Text String) [Def]
+parse = runParser (sepBy1 def (syntax ",")) "module"

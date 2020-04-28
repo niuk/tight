@@ -4,7 +4,7 @@
 
 ### Basics
 
-We use the single colon (`:`) for both type and kind annotation. `*` is the kind of all types that are inhabited by values.
+We use the double colon (`::`) for both type and kind annotation. `*` is the kind of all types that are inhabited by values.
 
 ### Linearity
 
@@ -98,12 +98,13 @@ index = findIndex 4 (0 `List` 3 `List` 4 `List` 2)
 
 
 ## Relevant Links
+
+* [Doo Bee Doo Bee Doo. L Convent, S Lindley, C McBride, C McLaughlin](http://lukas.convnet.de/proj/doo-bee/frankly-draft-february2019.pdf)
+
 * [Lightweight Linear Types in System F◦. K Mazurak, J Zhao, S Zdancewic](https://www.cis.upenn.edu/~stevez/papers/MZZ10.pdf)
 
 * [The Best of Both Worlds: Linear Functional Programming without Compromise. J G Morris](https://arxiv.org/pdf/1612.06633.pdf)
 
 * [On Regions and Linear Types. D Walker and K Watkins](http://www.cs.cmu.edu/~dpw/papers/lr-submitted.pdf)
-
-* [Linear Regions Are All You Need. M Fluet, G Morrisett, A Ahmed](http://www.ccs.neu.edu/home/amal/papers/linrgn.pdf)
 
 * [Adoption and Focus: Practical Linear Types for Imperative Programming. M Fähndrich, R DeLine](https://www.microsoft.com/en-us/research/wp-content/uploads/2002/05/pldi02.pdf?from=http%3A%2F%2Fresearch.microsoft.com%2F%7Emaf%2Fpapers%2Fpldi02.pdf)
