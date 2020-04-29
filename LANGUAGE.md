@@ -1,6 +1,6 @@
 # The Language
 
-## Features
+Tight attempts to combine linear types with an effect system. The former ensures that resources like memory, file handles, and sockets are treated safely, while the latter provides a unified way of implementing control flow constructs like exceptions and async/await.
 
 ### Basics
 
