@@ -91,3 +91,6 @@ fileCopy sourcePath targetPath =
             ]
         ]
     ]]]
+
+-- wait, shit
+-- how do we guarantee that `Close` gets called on every file handle?
