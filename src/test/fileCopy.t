@@ -25,7 +25,10 @@ openFile path = do [
     unsafeFileHandle = unsafeOpen path,
     (unsafeFileHandle, {
         readByte h = (unsafeReadByte h, h),
-        writeByte b h = [unsafeWriteByte b h, h]
+        writeByte b h = do [
+            unsafeWriteByte b h,
+            h
+        ]
         close = unsafeClose
     })
 ]
