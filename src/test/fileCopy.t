@@ -1,5 +1,26 @@
+-- we wish to write a program that copies bytes from a source file into a target file,
+-- closing all open file handles when it is done or encounters an error
+
+-- first, we need exceptions
+-- `+` is the kind of effect types, and an effect is the type of commands
+-- capitalization implies the definition of literals; in this case, commands
+type Throws: * -> +
+Throw: forall a. a -> [Throws a]()
+
+-- a square bracket pattern in the form `[foo. k]` matches the command with the pattern `foo`,
+-- and captures in `k` an additive record with two choices, `k.abort` and `k.return`
+-- the former is a callback to give the command's caller a chance to do cleanup, whereas
+-- the latter is a continuation for returning a value and resuming the caller's control flow
+-- note that `k` has a linear type, so one of the choices _must_ be made
+catch: forall a b. [Throws a]b -> (a -> b) -> b
+catch x _ = x
+catch [Throw x. k] except = do [
+    k.abort (),
+    except x
+]
+
 -- UnsafeFileHandle is an unrestricted type
--- note that capitalization implies the definition of constructors
+-- capitalization implies the definition of data constructors
 type UnsafeFileHandle: *
 UnsafeFileHandle: Int -> UnsafeFileHandle
 
@@ -7,93 +28,98 @@ derive Dup UnsafeFileHandle
 derive Drop UnsafeFileHandle
 
 -- assume we have FFI implementations of these operations
-extern unsafeOpen: String -> UnsafeFileHandle
+extern unsafeOpen: String -> Maybe UnsafeFileHandle
 extern unsafeReadByte: UnsafeFileHandle -> Maybe Byte
 extern unsafeWriteByte: Byte -> UnsafeFileHandle -> ()
 extern unsafeClose: UnsafeFileHandle -> ()
 
 -- in the style of System-F°, we can use existential types to package the above into a safe, linear API
-type FileMethods a: *
-type FileMethods a = {
+type fileMethods: * -> *
+type fileMethods a = {
     read: a -> (Maybe Byte, a),
     write: Byte -> a -> a,
     close: a -> ()
 }
 
-openFile: String -> exists a. (a, FileMethods a)
+type FileException: *
+CouldNotOpenFile: FileException
+
+openFile: String -> [Throws FileException]exists a. (a, fileMethods a)
 openFile path = do [
-    unsafeFileHandle = unsafeOpen path,
-    (unsafeFileHandle, {
-        readByte h = (unsafeReadByte h, h),
-        writeByte b h = do [
-            unsafeWriteByte b h,
-            h
-        ]
-        close = unsafeClose
-    })
+    maybeFileHandle = unsafeOpen path,
+    on maybeFileHandle [
+        Nothing. Throw CouldNotOpenFile;
+        Just fileHandle. (unsafeFileHandle, {
+            readByte h = (unsafeReadByte h, h),
+            writeByte b h = do [
+                unsafeWriteByte b h,
+                h
+            ]
+            close = unsafeClose
+        })
+    ]
 ]
 
 -- since it is inconvenient to manually pass a file handle and its associated methods around,
 -- we define an effect to be interpreted based on the existential type instead
--- `+` is the kind of effect types, and an effect is the type of commands
--- similar to its use in the definition of constructors, capitalization implies the definition of commands
-type File a: +
+type File: * -> +
 ReadByte: forall a. [File a](Maybe Byte, a)
 WriteByte: forall a. Byte -> [File a]()
 Close: forall a. [File a]()
 
 -- we must now define an interpreter for commands of type `File a`
 -- note that this implementation is guaranteed to be safe by the linearity of `a`
--- in the style of Frank, chevrons (`<` and `>`) in patterns capture:
--- 1. the "shallow" continuation (`k`),
--- 2. the set of linear resources in context at invocation of a command (`l`),
--- 3. and the effect itself for pattern matching
-withFile: forall a b. (a, FileMethods a) -> <File a>b -> b
-withFile (handle, methods) x = x
-withFile (handle, methods) <k, l, ReadByte> = do [
-    (maybeByte, handle) = methods.readByte handle,
-    withFile (handle, methods) (k l maybeByte)
-]
-withFile (handle, methods) <k, l, WriteByte byte> = do [
-    handle = methods.writeByte handle,
-    withFile (handle, methods) (k l ())
-]
-withFile (handle, methods) <k, l, Close> = do [
-    methods.close handle,
-    k l () -- there is no need to continue interpreting effects of this type since the handle no longer exists
-]
-
--- now, we wish to write a program that copies bytes from a source file into a target file,
--- exiting and closing all open file handles when it reaches the end of the source file.
-
--- first, we define an effect for early exit
-extern unsafeExit: forall a. Int -> a
-
-type Exit: +
-Exit: forall a. Int -> [Exit]a
-
-withExit: forall l a. <Exit>a -> [Destroy l]a
-withExit x = x
-withExit <k, l, Exit exitCode> = do [
-    Destroy l,
-    unsafeExit exitCode
+-- `|` adds callbacks to the `abort` of every command interpretation that "leaks out"
+withFile: forall b. (exists a. (a, fileMethods a)) -> (forall a. [File a]b) -> b
+withFile (handle, methods) x = on (x *a | [methods.close handle]) [
+    [ReadByte (). k]. do [
+        (maybeByte, handle) = methods.readByte handle,
+        withFile (handle, methods) [*_, k.return maybeByte]
+    ],
+    [WriteByte byte. k]. do [
+        handle = methods.writeByte handle,
+        withFile (handle, methods) [*_, k.return ()]
+    ],
+    [Close (). k]. do [
+        methods.close handle,
+        k.return ()
+    ];
+    x. [
+        methods.close handle,
+        x
+    ]
 ]
 
--- `Fix` is a command for implementing recursion, and its effect is `Div` (short for "divergence")
-fileCopy: forall a. String -> String -> [Div]a
+-- let's define an effect for looping
+type Loop: * -> +
+Continue: forall a. [Loop a]()
+Break: forall a. a -> [Loop a]()
+
+loop: forall a. (() -> [Loop a]()) -> a
+loop f = on (f ()) [
+    _. loop f;
+    [Continue. k]. do [
+        k.abort(),
+        loop f
+    ];
+    [Break x. k]. do [
+        k.abort(),
+        x
+    ];
+]
+
+-- now we can finally define the actual copy function
+-- note that all its internal effects are handled, so it appears to be a pure function
+fileCopy: String -> String -> [Throws FileException]()
 fileCopy sourcePath targetPath =
     withFile (openFile sourcePath) [*s.
-    withFile (openFile targetPath) [*t.
-    Fix [recur ().
-        maybeByte = ReadByte *s,
-        on maybeByte [
-            Nothing. Exit 0;
-            Just byte. do [
-                WriteByte *t byte,
-                recur ()
+        withFile (openFile targetPath) [*t.
+            loop [
+                maybeByte = ReadByte *s,
+                on maybeByte [
+                    Nothing. Break ();
+                    Just byte. WriteByte *t byte
+                ]
             ]
         ]
-    ]]]
-
--- wait, shit
--- how do we guarantee that `Close` gets called on every file handle?
+    ]
