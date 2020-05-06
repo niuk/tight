@@ -32,14 +32,12 @@ isOpChar c = not (isSpace c) && not (isAlphaNum c) && (c `notElem`
     , ';'
     ])
 
-disallowed =
+special =
     [ "forall"
     , "exists"
     , "type"
     , "∀"
     , "∃"
-    , "Λ"
-    , "λ"
     ]
 
 many1 p = (:) <$> p <*> many p
@@ -56,11 +54,13 @@ syntax :: String -> Parser Text
 syntax = lexeme . string . pack
 
 parens :: forall a. Parser a -> Parser a
-parens p = do
-    syntax "("
-    x <- p
-    syntax ")"
-    return x
+parens = between (syntax "(") (syntax ")")
+
+brackets :: forall a. Parser a -> Parser a
+brackets = between (syntax "[") (syntax "]")
+
+braces :: forall a. Parser a -> Parser a
+braces = between (syntax "{") (syntax "}")
 
 kindExpr :: Int -> Parser KindExpr
 kindExpr 0 = trySum
@@ -77,8 +77,8 @@ kindExpr 1 = trySum
     , parens (kindExpr 0)
     ]
 
-disallow :: [Text] -> Parser Text -> Parser Text
-disallow l p = do
+exclude :: [Text] -> Parser Text -> Parser Text
+exclude l p = do
     x <- p
     when (x `elem` l) (fail ("\"" ++ unpack x ++ "\" is not allowed here."))
     return x
@@ -87,13 +87,13 @@ suffix :: Parser Text
 suffix = pack <$> many (alphaNumChar <|> char '_')
 
 variable :: Parser Text
-variable = disallow disallowed (lexeme (cons <$> lowerChar <*> suffix))
+variable = exclude special (lexeme (cons <$> lowerChar <*> suffix))
 
 constructor :: Parser Text
-constructor = disallow disallowed (lexeme (cons <$> upperChar <*> suffix))
+constructor = exclude special (lexeme (cons <$> upperChar <*> suffix))
 
 operator :: Parser Text
-operator = disallow disallowed (lexeme (pack <$> many1 (satisfy isOpChar)))
+operator = exclude special (lexeme (pack <$> many1 (satisfy isOpChar)))
 
 operatorExpr :: forall a. Parser a -> Parser (Either Text a)
 operatorExpr p = trySum
@@ -108,12 +108,6 @@ operatorExpr p = trySum
 typeExpr :: Int -> Parser TypeExpr
 typeExpr 0 = trySum
     [ do
-        x < typeExpr 1
-        syntax "using"
-
-    ]
-typeExpr 1 = trySum
-    [ do
         syntax "∀" <|> syntax "forall"
         vs <- many1 variable
         syntax ":"
@@ -123,6 +117,7 @@ typeExpr 1 = trySum
         vs <- many1 variable
         syntax ":"
         Exists vs <$> typeExpr 0
+    , EffectType <$> brackets (sepBy (typeExpr 0) (syntax ",")) <*> typeExpr 1
     , do
         x <- typeExpr 1
         op <- either id id <$> operatorExpr variable

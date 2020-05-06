@@ -4,6 +4,7 @@ import Data.Text
 
 data KindExpr
     = KindArrow KindExpr KindExpr
+    | KindCross
     | KindStar
     deriving Show
 
@@ -15,9 +16,13 @@ data Row
 data TypeExpr
     = ForAll [Text] TypeExpr
     | Exists [Text] TypeExpr
+    | EffectType [TypeExpr] TypeExpr
     | TypeCon Text [TypeExpr]
     | Qual [Row] Text TypeExpr
-    | RecType [Row] Text
+    | RecordType [Row] Text
+    | ChoiceType [Row] Text
+    | TupleType [TypeExpr]
+    | SelectionType [TypeExpr]
     | TypeVar Text
     deriving Show
 
@@ -40,8 +45,9 @@ data Expr
     | TypeApp Expr TypeExpr
     | Lambda [([Pattern], [Either Def Expr])]
     | TypeLambda Text [Either Def Expr]
-    | Rec [Def] [Expr]
-    | Selection [Def]
+    | Record [Either Def Expr]
+    | Choice [(Maybe Text, Expr)]
     | Tuple [Expr]
+    | Selection [Expr]
     | Nil
     deriving Show
